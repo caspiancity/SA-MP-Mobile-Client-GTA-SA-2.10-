@@ -36,6 +36,33 @@ jobs:
           echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=${NDK_PATH}" >> $GITHUB_ENV
 
+      - name: Fix C++ Case-Sensitivity (Auto Symlink)
+        run: |
+          python3 -c "
+          import os
+          src_dir = 'app/src/main/cpp'
+          if os.path.exists(src_dir):
+              for root, dirs, files in os.walk(src_dir):
+                  for f in files:
+                      ext = os.path.splitext(f)[1]
+                      name = os.path.splitext(f)[0]
+                      if ext.lower() in ['.h', '.hpp', '.c', '.cpp', '.cc']:
+                          variations = set([
+                              f.lower(),
+                              f.upper(),
+                              name.upper() + ext.lower(),
+                              name.lower() + ext.lower(),
+                              name.capitalize() + ext.lower()
+                          ])
+                          for v in variations:
+                              target_path = os.path.join(root, v)
+                              if not os.path.exists(target_path):
+                                  try:
+                                      os.symlink(f, target_path)
+                                  except Exception:
+                                      pass
+          "
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
