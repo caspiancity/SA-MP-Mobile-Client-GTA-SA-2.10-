@@ -2,54 +2,45 @@ name: Build SA-MP Mobile Client
 
 on:
   push:
-    branches: [ "**" ]
+    branches: [ "main", "master" ]
   pull_request:
-    branches: [ "**" ]
+    branches: [ "main", "master" ]
   workflow_dispatch:
 
 jobs:
   build:
+    name: Build Android APK
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
-          cache: 'gradle'
+          cache: gradle
 
-      - name: Accept Android SDK Licenses
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK 28
         run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager "ndk;28.0.12433566"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/28.0.12433566" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=${ANDROID_HOME}/ndk/28.0.12433566" >> $GITHUB_ENV
 
-      - name: Fix permissions for Gradlew
-        run: |
-          find . -maxdepth 2 -iname "gradlew" -exec chmod +x {} \;
+      - name: Make gradlew executable
+        run: chmod +x gradlew
 
-      - name: Build Debug APK
-        run: |
-          # Ninja / CMake üçün RAM dolmasının qarşısını almaq üçün parallel yiv sayını 2 ilə məhdudlaşdırırıq
-          export CMAKE_BUILD_PARALLEL_LEVEL=2
-          
-          if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --no-daemon --stacktrace
-          elif [ -f "./Gradlew" ]; then
-            ./Gradlew assembleDebug --no-daemon --stacktrace
-          else
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+      - name: Build APK with Gradle
+        run: ./gradlew assembleDebug --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Upload APK Output
         uses: actions/upload-artifact@v4
-        if: always()
         with:
-          name: samp-client-debug-apk
-          path: |
-            **/build/outputs/apk/**/*.apk
+          name: SAMP-Client-v2.10-Debug
+          path: app/build/outputs/apk/debug/*.apk
