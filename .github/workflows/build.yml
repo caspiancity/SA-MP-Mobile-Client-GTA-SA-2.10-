@@ -2,9 +2,9 @@ name: Build SA-MP Mobile Client
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "MAIN", "MASTER" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "MAIN", "MASTER" ]
   workflow_dispatch:
 
 jobs:
@@ -22,22 +22,38 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install Android NDK 28
+      - name: Setup Android SDK & Install NDK 28
         run: |
-          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.0.12433566"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
+          # Avtomatik bütün Android lisenziyalarını qəbul et
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+          # Köhnəlmiş 'tools' olmadan yalnız lazım olan paketləri və NDK 28-i quraşdır
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.0.12433566" "platform-tools" "build-tools;34.0.0"
+
+          # NDK üçün dəyişənləri Linux mühitinə təyin et
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
+          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
+
+      - name: Fix permissions for Gradlew (Case-Insensitive)
+        run: |
+          # Böyük/kiçik hərf fərqindən asılı olmayaraq gradlew faylını tapıb icra icazəsi (chmod +x) verir
+          find . -maxdepth 2 -iname "gradlew" -exec chmod +x {} \;
 
       - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          if [ -f "./gradlew" ]; then
+            ./gradlew assembleDebug --stacktrace
+          elif [ -f "./Gradlew" ]; then
+            ./Gradlew assembleDebug --stacktrace
+          else
+            gradle assembleDebug --stacktrace
+          fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: samp-client-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          # Rejissor qovluğundan asılı olmayaraq yığılan bütün APK fayllarını tapır
+          path: |
+            **/build/outputs/apk/debug/*.apk
+            **/build/outputs/apk/**/*.apk
