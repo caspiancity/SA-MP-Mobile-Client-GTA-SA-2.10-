@@ -2,9 +2,9 @@ name: Build SA-MP Mobile Client
 
 on:
   push:
-    branches: [ "main", "master", "MAIN", "MASTER" ]
+    branches: [ "**" ]
   pull_request:
-    branches: [ "main", "master", "MAIN", "MASTER" ]
+    branches: [ "**" ]
   workflow_dispatch:
 
 jobs:
@@ -14,46 +14,42 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Setup Android SDK & Install NDK 28
+      - name: Accept Android SDK Licenses
         run: |
-          # Avtomatik bütün Android lisenziyalarını qəbul et
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-          # Köhnəlmiş 'tools' olmadan yalnız lazım olan paketləri və NDK 28-i quraşdır
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install "ndk;28.0.12433566" "platform-tools" "build-tools;34.0.0"
-
-          # NDK üçün dəyişənləri Linux mühitinə təyin et
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.0.12433566" >> $GITHUB_ENV
-
-      - name: Fix permissions for Gradlew (Case-Insensitive)
+      - name: Fix permissions for Gradlew
         run: |
-          # Böyük/kiçik hərf fərqindən asılı olmayaraq gradlew faylını tapıb icra icazəsi (chmod +x) verir
           find . -maxdepth 2 -iname "gradlew" -exec chmod +x {} \;
 
       - name: Build Debug APK
         run: |
+          # Ninja / CMake üçün RAM dolmasının qarşısını almaq üçün parallel yiv sayını 2 ilə məhdudlaşdırırıq
+          export CMAKE_BUILD_PARALLEL_LEVEL=2
+          
           if [ -f "./gradlew" ]; then
-            ./gradlew assembleDebug --stacktrace
+            ./gradlew assembleDebug --no-daemon --stacktrace
           elif [ -f "./Gradlew" ]; then
-            ./Gradlew assembleDebug --stacktrace
+            ./Gradlew assembleDebug --no-daemon --stacktrace
           else
-            gradle assembleDebug --stacktrace
+            gradle assembleDebug --no-daemon --stacktrace
           fi
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: samp-client-debug-apk
-          # Rejissor qovluğundan asılı olmayaraq yığılan bütün APK fayllarını tapır
           path: |
-            **/build/outputs/apk/debug/*.apk
             **/build/outputs/apk/**/*.apk
