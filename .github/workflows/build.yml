@@ -36,6 +36,60 @@ jobs:
           echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=${NDK_PATH}" >> $GITHUB_ENV
 
+      - name: Auto-Fix Header Case Sensitivity (#include auto-correct)
+        run: |
+          python3 -c "
+          import os, re
+
+          cpp_dir = 'app/src/main/cpp'
+          if not os.path.exists(cpp_dir):
+              exit(0)
+
+          # 1. Disktə olan bütün real faylları xəritələyirik
+          file_map = {}
+          for root, dirs, files in os.walk(cpp_dir):
+              for f in files:
+                  rel_path = os.path.relpath(os.path.join(root, f), cpp_dir).replace('\\\\', '/')
+                  file_map[rel_path.lower()] = rel_path
+                  file_map[f.lower()] = f
+
+          include_regex = re.compile(r'(#\s*include\s*[\"<])([^\">]+)([\">])')
+
+          # 2. Bütün C/C++ fayllarındakı #include yollarını disktəki real adlarla əvəz edirik
+          fixed_count = 0
+          for root, dirs, files in os.walk(cpp_dir):
+              for f in files:
+                  if f.endswith(('.h', '.hpp', '.c', '.cpp', '.cc')):
+                      filepath = os.path.join(root, f)
+                      try:
+                          with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
+                              content = file.read()
+
+                          def fix_include(match):
+                              prefix, inc_path, suffix = match.groups()
+                              inc_path_clean = inc_path.replace('\\\\', '/')
+                              inc_filename = os.path.basename(inc_path_clean)
+
+                              if inc_path_clean.lower() in file_map:
+                                  real_path = file_map[inc_path_clean.lower()]
+                                  return f'{prefix}{real_path}{suffix}'
+                              elif inc_filename.lower() in file_map:
+                                  real_filename = file_map[inc_filename.lower()]
+                                  dirname = os.path.dirname(inc_path_clean)
+                                  new_path = f'{dirname}/{real_filename}' if dirname else real_filename
+                                  return f'{prefix}{new_path}{suffix}'
+                              return match.group(0)
+
+                          new_content = include_regex.sub(fix_include, content)
+                          if new_content != content:
+                              with open(filepath, 'w', encoding='utf-8') as file:
+                                  file.write(new_content)
+                              fixed_count += 1
+                      except Exception:
+                          pass
+          print(f'Uğurla düzəldildi: {fixed_count} fayldakı #include hərfləri Linux-a uyğunlaşdırıldı.')
+          "
+
       - name: Make gradlew executable
         run: chmod +x gradlew
 
