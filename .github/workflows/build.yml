@@ -100,7 +100,7 @@ run: chmod +x gradlew
 run: |
 if ! ./gradlew assembleDebug --stacktrace --info > build_output.log 2>&1; then
 echo ""
-echo "❌ BUILD ÇÖKDÜ! İŞTƏ ƏSAS XƏTALAR (ERRORS):"
+echo "❌ BUILD ÇÖKDÜ! İŞTƏ ƏSASs XƏTALAR (ERRORS):"
 echo ""
 grep -i -E "error:|fatal:|FAILED" build_output.log -B 2 -A 4 | head -n 150 || true
 echo "========================================"
