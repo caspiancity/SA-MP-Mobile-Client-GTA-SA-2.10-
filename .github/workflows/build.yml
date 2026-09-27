@@ -16,60 +16,45 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 21
+      - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
           cache: gradle
 
-      - name: Setup Android SDK & NDK 28
+      # SA-MP C++ kodu üçün ən stabil NDK r23b versiyasıdır
+      - name: Setup Android SDK & NDK 23b
         uses: android-actions/setup-android@v3
         with:
           cmdline-tools-version: '12266719'
           accept-android-sdk-licenses: true
-          packages: 'ndk;28.0.12433566'
+          packages: 'ndk;23.2.8568313'
 
       - name: Set NDK Environment Variables
         run: |
-          NDK_PATH="${ANDROID_HOME}/ndk/28.0.12433566"
+          NDK_PATH="${ANDROID_HOME}/ndk/23.2.8568313"
           echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
           echo "ANDROID_NDK_ROOT=${NDK_PATH}" >> $GITHUB_ENV
-
-      - name: Fix C++ Case-Sensitivity (Auto Symlink)
-        run: |
-          python3 -c "
-          import os
-          src_dir = 'app/src/main/cpp'
-          if os.path.exists(src_dir):
-              for root, dirs, files in os.walk(src_dir):
-                  for f in files:
-                      ext = os.path.splitext(f)[1]
-                      name = os.path.splitext(f)[0]
-                      if ext.lower() in ['.h', '.hpp', '.c', '.cpp', '.cc']:
-                          variations = set([
-                              f.lower(),
-                              f.upper(),
-                              name.upper() + ext.lower(),
-                              name.lower() + ext.lower(),
-                              name.capitalize() + ext.lower()
-                          ])
-                          for v in variations:
-                              target_path = os.path.join(root, v)
-                              if not os.path.exists(target_path):
-                                  try:
-                                      os.symlink(f, target_path)
-                                  except Exception:
-                                      pass
-          "
 
       - name: Make gradlew executable
         run: chmod +x gradlew
 
       - name: Build APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace
+        run: ./gradlew assembleDebug --stacktrace --info > build_output.log 2>&1 || BUILD_FAILED=true
+
+      - name: Analyze Log on Failure
+        if: always()
+        run: |
+          if [ -f build_output.log ]; then
+            echo "=== BUILD LOG XÜLASƏSİ (Son 150 sətir) ==="
+            tail -n 150 build_output.log
+            echo "=== YALNIZ XƏTALAR (ERRORS) ==="
+            grep -i -E "error:|fatal:|FAILED" build_output.log -B 2 -A 4 | head -n 200 || true
+          fi
 
       - name: Upload APK Output
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: SAMP-Client-v2.10-Debug
