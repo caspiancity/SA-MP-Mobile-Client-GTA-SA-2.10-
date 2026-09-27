@@ -29,14 +29,17 @@ run: |
 NDK_PATH="{ANDROID_HOME}/ndk/23.2.8568313"
 echo "ANDROID_NDK_HOME={NDK_PATH}" >> GITHUB_ENV
 echo "ANDROID_NDK_ROOT={NDK_PATH}" >> $GITHUB_ENV
-- name: Auto-Fix CMake Include Paths and Header Case Sensitivity
+- name: Auto-Fix Header Case Sensitivity
 run: |
-python3 -c "
-import os, re
+cat << 'EOF' > fix_headers.py
+import os
+import re
 repo_root = os.getcwd()
 cpp_dir = os.path.join(repo_root, 'app/src/main/cpp')
-if os.path.exists(cpp_dir):
-# 1. CMakeLists.txt fayllarına kök include yollarını əlavə edirik
+if not os.path.exists(cpp_dir):
+print(f"C++ qovluğu tapılmadı: {cpp_dir}")
+exit(0)
+# 1. CMakeLists.txt fayllarına include yollarını əlavə edirik
 for root, dirs, files in os.walk(cpp_dir):
 for f in files:
 if f == 'CMakeLists.txt':
@@ -44,56 +47,73 @@ cm_path = os.path.join(root, f)
 try:
 with open(cm_path, 'r', encoding='utf-8', errors='ignore') as cm_file:
 cm_content = cm_file.read()
-inc_line = '\ninclude_directories("{CMAKE_CURRENT_SOURCE_DIR}\")\ninclude_directories(\"{CMAKE_CURRENT_SOURCE_DIR}/..")\ninclude_directories("{CMAKE_CURRENT_SOURCE_DIR}/../..\")\n'
-if 'include_directories(\"{CMAKE_CURRENT_SOURCE_DIR}")' not in cm_content:
+inc_line = '\ninclude_directories("{CMAKE_CURRENT_SOURCE_DIR}")\ninclude_directories("{CMAKE_CURRENT_SOURCE_DIR}/..")\ninclude_directories("{CMAKE_CURRENT_SOURCE_DIR}/../..")\n'
+if 'include_directories("{CMAKE_CURRENT_SOURCE_DIR}")' not in cm_content:
 with open(cm_path, 'w', encoding='utf-8') as cm_file:
 cm_file.write(inc_line + cm_content)
 except Exception:
 pass
-# 2. Bütün C++ fayllarını və qovluqlarını xəritələyirik
+# 2. Bütün fayl və qovluq yollarını böyük/kiçik hərflərə görə xəritələyirik
+rel_map = {}
 file_map = {}
 for root, dirs, files in os.walk(cpp_dir):
 for f in files:
 full_p = os.path.join(root, f)
-rel_cpp = os.path.relpath(full_p, cpp_dir).replace('\\', '/')
-file_map[rel_cpp.lower()] = rel_cpp
-file_map[f.lower()] = f
-parts = rel_cpp.split('/')
-for i in range(len(parts)):
-sub = '/'.join(parts[i:])
-file_map[sub.lower()] = sub
-# 3. Bütün #include sətrlərini disktə olan DƏQİQ böyük/kiçik hərflərlə əvəzləyirik
+rel_p = os.path.relpath(full_p, cpp_dir).replace('\', '/')
+rel_map[rel_p.lower()] = rel_p
+f_lower = f.lower()
+if f_lower not in file_map:
+file_map[f_lower] = []
+file_map[f_lower].append(rel_p)
 include_regex = re.compile(r'(#\sinclude\s["<])([^">]+)([">])')
 fixed_count = 0
 for root, dirs, files in os.walk(cpp_dir):
 for f in files:
 if f.endswith(('.h', '.hpp', '.c', '.cpp', '.cc', '.inl')):
 filepath = os.path.join(root, f)
+file_dir = os.path.dirname(filepath)
 try:
-with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
-content = file.read()
+with open(filepath, 'r', encoding='utf-8', errors='ignore') as fp:
+content = fp.read()
 def fix_inc(m):
 p1, inc_path, p2 = m.groups()
-clean_inc = inc_path.replace('\\', '/')
+clean_inc = inc_path.replace('\', '/')
 clean_lower = clean_inc.lower()
-if clean_lower in file_map:
-return f'{p1}{file_map[clean_lower]}{p2}'
-fname = os.path.basename(clean_inc).lower()
-if fname in file_map:
-dirname = os.path.dirname(clean_inc)
-if dirname and dirname.lower() in file_map:
-return f'{p1}{file_map[dirname.lower()]}/{file_map[fname]}{p2}'
-return f'{p1}{file_map[fname]}{p2}'
+# Nisbi yol xəritəsi
+if clean_lower in rel_map:
+return f'{p1}{rel_map[clean_lower]}{p2}'
+# Cari faylın qovluğuna nəzərən
+rel_file_dir = os.path.relpath(file_dir, cpp_dir).replace('\', '/')
+cand_rel = os.path.normpath(os.path.join(rel_file_dir, clean_inc)).replace('\', '/')
+if cand_rel.lower() in rel_map:
+exact_cand = rel_map[cand_rel.lower()]
+exact_full = os.path.join(cpp_dir, exact_cand)
+new_p = os.path.relpath(exact_full, file_dir).replace('\', '/')
+return f'{p1}{new_p}{p2}'
+# Fayl adına görə uyğunlaşdırma
+fname_lower = os.path.basename(clean_inc).lower()
+if fname_lower in file_map:
+candidates = file_map[fname_lower]
+best_cand = candidates[0]
+for cand in candidates:
+if os.path.dirname(clean_inc).lower() in cand.lower():
+best_cand = cand
+break
+if '/' in clean_inc:
+return f'{p1}{best_cand}{p2}'
+else:
+return f'{p1}{os.path.basename(best_cand)}{p2}'
 return m.group(0)
 new_content = include_regex.sub(fix_inc, content)
 if new_content != content:
-with open(filepath, 'w', encoding='utf-8') as file:
-file.write(new_content)
+with open(filepath, 'w', encoding='utf-8') as fp:
+fp.write(new_content)
 fixed_count += 1
 except Exception:
 pass
-print(f'Hərfləri düzəldilmiş fayl sayı: {fixed_count}')
-"
+print(f"Hərfləri düzəldilmiş fayl sayısı: {fixed_count}")
+EOF
+python3 fix_headers.py
 - name: Make gradlew executable
 run: chmod +x gradlew
 - name: Build APK with Gradle
