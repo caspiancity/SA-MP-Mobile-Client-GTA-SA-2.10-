@@ -23,7 +23,6 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
-      # SA-MP C++ kodu üçün ən stabil NDK r23b versiyasıdır
       - name: Setup Android SDK & NDK 23b
         uses: android-actions/setup-android@v3
         with:
@@ -41,20 +40,19 @@ jobs:
         run: chmod +x gradlew
 
       - name: Build APK with Gradle
-        run: ./gradlew assembleDebug --stacktrace --info > build_output.log 2>&1 || BUILD_FAILED=true
-
-      - name: Analyze Log on Failure
-        if: always()
         run: |
-          if [ -f build_output.log ]; then
-            echo "=== BUILD LOG XÜLASƏSİ (Son 150 sətir) ==="
-            tail -n 150 build_output.log
-            echo "=== YALNIZ XƏTALAR (ERRORS) ==="
-            grep -i -E "error:|fatal:|FAILED" build_output.log -B 2 -A 4 | head -n 200 || true
+          if ! ./gradlew assembleDebug --stacktrace --info > build_output.log 2>&1; then
+            echo "=========================================="
+            echo "❌ BUILD ÇÖKDÜ! İŞTƏ ƏSAS XƏTALAR (ERRORS):"
+            echo "=========================================="
+            grep -i -E "error:|fatal:|FAILED" build_output.log -B 2 -A 4 | head -n 150 || true
+            echo "=========================================="
+            echo "=== LOGUN SON 100 SƏTRİ ==="
+            tail -n 100 build_output.log
+            exit 1
           fi
 
       - name: Upload APK Output
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: SAMP-Client-v2.10-Debug
