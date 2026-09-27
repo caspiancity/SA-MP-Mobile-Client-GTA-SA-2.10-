@@ -1,117 +1,115 @@
 name: Build SA-MP Mobile Client
-
 on:
-  push:
-    branches: [ "main", "master" ]
-  pull_request:
-    branches: [ "main", "master" ]
-  workflow_dispatch:
-
+push:
+branches: [ "main", "master" ]
+pull_request:
+branches: [ "main", "master" ]
+workflow_dispatch:
 jobs:
-  build:
-    name: Build Android APK
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-          cache: gradle
-
-      - name: Setup Android SDK & NDK 23b
-        uses: android-actions/setup-android@v3
-        with:
-          cmdline-tools-version: '12266719'
-          accept-android-sdk-licenses: true
-          packages: 'ndk;23.2.8568313'
-
-      - name: Set NDK Environment Variables
-        run: |
-          NDK_PATH="${ANDROID_HOME}/ndk/23.2.8568313"
-          echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
-          echo "ANDROID_NDK_ROOT=${NDK_PATH}" >> $GITHUB_ENV
-
-      - name: Auto-Fix Header Case Sensitivity & Missing CColor Includes
-        run: |
-          python3 -c "
-          import os, re
-
-          cpp_dir = 'app/src/main/cpp'
-          if not os.path.exists(cpp_dir):
-              exit(0)
-
-          # 1. Disktə olan bütün real faylları xəritələyirik
-          file_map = {}
-          rgba_path = 'RGBA.h'
-          for root, dirs, files in os.walk(cpp_dir):
-              for f in files:
-                  rel_path = os.path.relpath(os.path.join(root, f), cpp_dir).replace('\\\\', '/')
-                  file_map[rel_path.lower()] = rel_path
-                  file_map[f.lower()] = f
-                  if f.lower() == 'rgba.h':
-                      rgba_path = rel_path
-
-          include_regex = re.compile(r'(#\s*include\s*[\"<])([^\">]+)([\">])')
-
-          # 2. #include hərf fərqlərini düzəldirik
-          for root, dirs, files in os.walk(cpp_dir):
-              for f in files:
-                  if f.endswith(('.h', '.hpp', '.c', '.cpp', '.cc')):
-                      filepath = os.path.join(root, f)
-                      try:
-                          with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
-                              content = file.read()
-
-                          def fix_include(match):
-                              prefix, inc_path, suffix = match.groups()
-                              inc_path_clean = inc_path.replace('\\\\', '/')
-                              inc_filename = os.path.basename(inc_path_clean)
-
-                              if inc_path_clean.lower() in file_map:
-                                  return f'{prefix}{file_map[inc_path_clean.lower()]}{suffix}'
-                              elif inc_filename.lower() in file_map:
-                                  real_filename = file_map[inc_filename.lower()]
-                                  dirname = os.path.dirname(inc_path_clean)
-                                  new_path = f'{dirname}/{real_filename}' if dirname else real_filename
-                                  return f'{prefix}{new_path}{suffix}'
-                              return match.group(0)
-
-                          new_content = include_regex.sub(fix_include, content)
-
-                          # 3. ColouredText.h və TextRasterizer.h daxilində CColor xətası üçün RGBA.h patch-i
-                          if f in ['ColouredText.h', 'TextRasterizer.h'] and 'RGBA.h' not in new_content and 'rgba.h' not in new_content:
-                              new_content = f'#include \"{rgba_path}\"\n' + new_content
-
-                          if new_content != content:
-                              with open(filepath, 'w', encoding='utf-8') as file:
-                                  file.write(new_content)
-                      except Exception as e:
-                          print(f'Error patching {filepath}: {e}')
-          "
-
-      - name: Make gradlew executable
-        run: chmod +x gradlew
-
-      - name: Build APK with Gradle
-        run: |
-          if ! ./gradlew assembleDebug --stacktrace --info > build_output.log 2>&1; then
-            echo "=========================================="
-            echo "❌ BUILD ÇÖKDÜ! İŞTƏ ƏSAS XƏTALAR (ERRORS):"
-            echo "=========================================="
-            grep -i -E "error:|fatal:|FAILED" build_output.log -B 2 -A 4 | head -n 150 || true
-            echo "=========================================="
-            echo "=== LOGUN SON 100 SƏTRİ ==="
-            tail -n 100 build_output.log
-            exit 1
-          fi
-
-      - name: Upload APK Output
-        uses: actions/upload-artifact@v4
-        with:
-          name: SAMP-Client-v2.10-Debug
-          path: app/build/outputs/apk/debug/*.apk
+build:
+name: Build Android APK
+runs-on: ubuntu-latest
+steps:
+- name: Checkout repository
+uses: actions/checkout@v4
+- name: Set up JDK 17
+uses: actions/setup-java@v4
+with:
+java-version: '17'
+distribution: 'temurin'
+cache: gradle
+- name: Setup Android SDK & NDK 23b
+uses: android-actions/setup-android@v3
+with:
+cmdline-tools-version: '12266719'
+accept-android-sdk-licenses: true
+packages: 'ndk;23.2.8568313'
+- name: Set NDK Environment Variables
+run: |
+NDK_PATH="{ANDROID_HOME}/ndk/23.2.8568313"
+echo "ANDROID_NDK_HOME={NDK_PATH}" >> GITHUB_ENV
+echo "ANDROID_NDK_ROOT={NDK_PATH}" >> $GITHUB_ENV
+- name: Auto-Fix CMake Include Paths and Header Case Sensitivity
+run: |
+python3 -c "
+import os, re
+repo_root = os.getcwd()
+cpp_dir = os.path.join(repo_root, 'app/src/main/cpp')
+if os.path.exists(cpp_dir):
+# 1. CMakeLists.txt fayllarına kök include yollarını əlavə edirik
+for root, dirs, files in os.walk(cpp_dir):
+for f in files:
+if f == 'CMakeLists.txt':
+cm_path = os.path.join(root, f)
+try:
+with open(cm_path, 'r', encoding='utf-8', errors='ignore') as cm_file:
+cm_content = cm_file.read()
+inc_line = '\ninclude_directories("{CMAKE_CURRENT_SOURCE_DIR}\")\ninclude_directories(\"{CMAKE_CURRENT_SOURCE_DIR}/..")\ninclude_directories("{CMAKE_CURRENT_SOURCE_DIR}/../..\")\n'
+if 'include_directories(\"{CMAKE_CURRENT_SOURCE_DIR}")' not in cm_content:
+with open(cm_path, 'w', encoding='utf-8') as cm_file:
+cm_file.write(inc_line + cm_content)
+except Exception:
+pass
+# 2. Bütün C++ fayllarını və qovluqlarını xəritələyirik
+file_map = {}
+for root, dirs, files in os.walk(cpp_dir):
+for f in files:
+full_p = os.path.join(root, f)
+rel_cpp = os.path.relpath(full_p, cpp_dir).replace('\\', '/')
+file_map[rel_cpp.lower()] = rel_cpp
+file_map[f.lower()] = f
+parts = rel_cpp.split('/')
+for i in range(len(parts)):
+sub = '/'.join(parts[i:])
+file_map[sub.lower()] = sub
+# 3. Bütün #include sətrlərini disktə olan DƏQİQ böyük/kiçik hərflərlə əvəzləyirik
+include_regex = re.compile(r'(#\sinclude\s["<])([^">]+)([">])')
+fixed_count = 0
+for root, dirs, files in os.walk(cpp_dir):
+for f in files:
+if f.endswith(('.h', '.hpp', '.c', '.cpp', '.cc', '.inl')):
+filepath = os.path.join(root, f)
+try:
+with open(filepath, 'r', encoding='utf-8', errors='ignore') as file:
+content = file.read()
+def fix_inc(m):
+p1, inc_path, p2 = m.groups()
+clean_inc = inc_path.replace('\\', '/')
+clean_lower = clean_inc.lower()
+if clean_lower in file_map:
+return f'{p1}{file_map[clean_lower]}{p2}'
+fname = os.path.basename(clean_inc).lower()
+if fname in file_map:
+dirname = os.path.dirname(clean_inc)
+if dirname and dirname.lower() in file_map:
+return f'{p1}{file_map[dirname.lower()]}/{file_map[fname]}{p2}'
+return f'{p1}{file_map[fname]}{p2}'
+return m.group(0)
+new_content = include_regex.sub(fix_inc, content)
+if new_content != content:
+with open(filepath, 'w', encoding='utf-8') as file:
+file.write(new_content)
+fixed_count += 1
+except Exception:
+pass
+print(f'Hərfləri düzəldilmiş fayl sayı: {fixed_count}')
+"
+- name: Make gradlew executable
+run: chmod +x gradlew
+- name: Build APK with Gradle
+run: |
+if ! ./gradlew assembleDebug --stacktrace --info > build_output.log 2>&1; then
+echo ""
+echo "❌ BUILD ÇÖKDÜ! İŞTƏ ƏSAS XƏTALAR (ERRORS):"
+echo ""
+grep -i -E "error:|fatal:|FAILED" build_output.log -B 2 -A 4 | head -n 150 || true
+echo "========================================"
+echo "= LOGUN SON 100 SƏTRİ ==="
+tail -n 100 build_output.log
+exit 1
+fi
+- name: Upload APK Output
+uses: actions/upload-artifact@v4
+with:
+name: SAMP-Client-v2.10-Debug
+path: app/build/outputs/apk/debug/*.apk
