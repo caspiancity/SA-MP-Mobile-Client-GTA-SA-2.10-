@@ -30,7 +30,7 @@ file(GLOB_RECURSE SOURCES
         ${CMAKE_CURRENT_LIST_DIR}/vendor/hash/*.cpp
         )
 
-# Add include directories
+# Add include directories (Bütün alt qovluqlar daxil edilib)
 include_directories(
         ${CMAKE_CURRENT_LIST_DIR}
         ${CMAKE_CURRENT_LIST_DIR}/vendor/imgui
@@ -39,6 +39,16 @@ include_directories(
         ${CMAKE_CURRENT_LIST_DIR}/game/
         ${CMAKE_CURRENT_LIST_DIR}/java_systems
         ${CMAKE_CURRENT_LIST_DIR}/game/Core
+        ${CMAKE_CURRENT_LIST_DIR}/game/TwoDEffect
+        ${CMAKE_CURRENT_LIST_DIR}/game/Entity
+        ${CMAKE_CURRENT_LIST_DIR}/game/Collision
+        ${CMAKE_CURRENT_LIST_DIR}/game/Animation
+        ${CMAKE_CURRENT_LIST_DIR}/game/Audio
+        ${CMAKE_CURRENT_LIST_DIR}/game/Widgets
+        ${CMAKE_CURRENT_LIST_DIR}/game/Audio/entities
+        ${CMAKE_CURRENT_LIST_DIR}/game/Audio/loaders
+        ${CMAKE_CURRENT_LIST_DIR}/game/Audio/hardware
+        ${CMAKE_CURRENT_LIST_DIR}/game/Audio/managers
 )
 
 add_library(multiplayer SHARED ${SOURCES})
