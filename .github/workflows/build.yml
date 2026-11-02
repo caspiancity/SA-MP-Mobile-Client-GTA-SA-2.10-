@@ -15,6 +15,12 @@ jobs:
     - name: Checkout Repository
       uses: actions/checkout@v4
 
+    - name: Fix Case Sensitivity Issues
+      run: |
+        git config --global core.ignorecase true
+        git rm -r --cached . || true
+        git reset --hard
+
     - name: Set up Java 21
       uses: actions/setup-java@v4
       with:
